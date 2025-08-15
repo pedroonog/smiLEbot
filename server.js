@@ -1,6 +1,7 @@
 import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
+import { google } from "googleapis";
 dotenv.config();
 
 const app = express();
@@ -137,3 +138,59 @@ app.get("/", (_, res) => res.send("OK"));
 app.listen(process.env.PORT || 3000, () =>
   console.log("Webhook ON:", process.env.PORT || 3000)
 );
+
+// ping de saúde
+app.get("/health", (req, res) => res.status(200).send("ok"));
+
+// --- Google OAuth (básico) ---
+const {
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  BASE_URL, // ex.: https://smilebot-2asc.onrender.com (defina no Render)
+} = process.env;
+
+const oauth2Client = new google.auth.OAuth2(
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  `${BASE_URL}/google/callback`
+);
+
+// inicia o fluxo de login
+app.get("/google/auth", (req, res) => {
+  const dentistId = req.query.dentist_id || "default";
+  const scopes = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.readonly",
+  ];
+
+  const url = oauth2Client.generateAuthUrl({
+    access_type: "offline",
+    scope: scopes,
+    prompt: "consent",
+    state: dentistId, // você pode recuperar isso no callback
+  });
+
+  return res.redirect(url);
+});
+
+// finaliza o login (callback do Google)
+app.get("/google/callback", async (req, res) => {
+  try {
+    const { code, state } = req.query; // state = dentistId
+    const { tokens } = await oauth2Client.getToken(code);
+
+    // TODO: salvar tokens por dentista (state) no seu storage/banco
+    // await saveTokens(state, tokens);
+
+    return res.send("Conta Google conectada com sucesso!");
+  } catch (e) {
+    console.error(e);
+    return res.status(500).send("Falha ao concluir OAuth.");
+  }
+});
+
+// porta
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("Webhook ON:", PORT);
+});
